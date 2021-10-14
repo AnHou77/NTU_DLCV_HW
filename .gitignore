@@ -1,0 +1,6 @@
+# 檔案名稱 .gitignore
+
+*.zip
+*.csv
+data/
+save_model/
