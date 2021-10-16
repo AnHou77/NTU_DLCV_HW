@@ -9,19 +9,38 @@ from torch.utils.data import Dataset, DataLoader
 
 import glob
 import os
+from torchvision.transforms.functional import scale
+
+from torchvision.transforms.transforms import ColorJitter, Grayscale, RandomChoice, RandomVerticalFlip
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
 
 class p1(Dataset):
-    def __init__(self, root, transform=None):
+    def __init__(self, root, target):
 
         self.images = None
         self.labels = None
         self.filenames = []
         self.root = root
-        self.transform = transform
+        if target == 'train':
+            self.transform = transforms.Compose([
+                # transforms.Grayscale(3),
+                transforms.Resize((288,288)),
+                transforms.CenterCrop((224,224)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ])
+        else:
+            self.transform = transforms.Compose([
+                # transforms.Grayscale(3),
+                transforms.Resize((224,224)),
+                # transforms.CenterCrop((224,224)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
 
         # read filenames
         for i in range(50):
@@ -45,20 +64,27 @@ class p1(Dataset):
         """ Total number of samples in the dataset """
         return self.len
 
-class vgg16(torch.nn.Module):
-    def __init__(self):
+class resnet(torch.nn.Module):
+    def __init__(self, num_class=50,pretrained_path=None):
         super().__init__()
         
-        self.model = torchvision.models.vgg16(pretrained=True).to(device)
+        self.model = torchvision.models.resnet50(pretrained=True)
+        self.model.fc = nn.Sequential(
+            nn.Linear(2048,1024),
+            nn.Dropout(0.5),
+            nn.LeakyReLU(),
+            nn.Linear(1024,num_class)
+        )
 
-        self.model.classifier[6] = nn.Linear(4096,50)
+        if pretrained_path is not None:
+            self.model.state_dict(torch.load(pretrained_path))
+
         for param in self.model.parameters():
             param.requires_grad = True
 
-        # # unfreeze the Linear layer, because it need to be trained.
-        # for param in self.model._fc.parameters():
+        # for param in self.model.fc.parameters():
         #     param.requires_grad = True
-        
+
 
     def forward(self, x):
         pred = self.model(x)
@@ -71,12 +97,18 @@ def train(model, train_data, test_data, epoch, save_path = './save_model/'):
 
     model.to(device)
 
-    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=1e-4, weight_decay= 3e-4, momentum=0.9)
     criterion = nn.CrossEntropyLoss()
     model.train()  # Important: set training mode
     
     best_acc = 0.0
     model_save = model.state_dict()
+
+    accum_iter = 4
+
+    patient = 5
+    trigger = 0
+    min_loss = np.inf
 
     for ep in range(1, epoch+1):
         print('Epoch {}/{}'.format(ep, epoch))
@@ -85,13 +117,20 @@ def train(model, train_data, test_data, epoch, save_path = './save_model/'):
         # train
         train_loss = 0.0
         train_acc = 0.0
-        for (data, target) in tqdm(train_data):
+
+        for batch_idx, (data, target) in enumerate(tqdm(train_data)):
             data, target = data.to(device), target.to(device)
-            optimizer.zero_grad()
+            # optimizer.zero_grad()
             output = model(data)
             loss = criterion(output, target)
             loss.backward()
-            optimizer.step()
+            # optimizer.step()
+
+            # weights update
+            if ((batch_idx + 1) % accum_iter == 0) or (batch_idx + 1 == len(train_data)):
+                optimizer.step()
+                optimizer.zero_grad()
+
             # Acc
             acc = (output.argmax(dim=-1) == target).float().mean()
 
@@ -126,6 +165,14 @@ def train(model, train_data, test_data, epoch, save_path = './save_model/'):
         valid_loss = valid_loss / len(test_data)
         valid_acc = valid_acc / len(test_data)
 
+        if valid_loss < min_loss:
+            min_loss = valid_loss
+            trigger = 0
+        else:
+            trigger += 1
+            if trigger >= patient:
+                break
+
         # Print the information.das
         print(f"[ Valid | {ep:03d}/{epoch:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
         # save the best model
@@ -133,17 +180,18 @@ def train(model, train_data, test_data, epoch, save_path = './save_model/'):
             best_acc = valid_acc
             print('best acc: ',best_acc)
             model_save = model.state_dict()
+            # torch.save(model_save, os.path.join(save_path,'vgg16.pth'))
 
-    save_file = f"vgg16_{best_acc.item():.4f}.pth"
+    save_file = f"resnet_{best_acc.item():.4f}.pth"
     torch.save(model_save, os.path.join(save_path,save_file))
     print('save model with acc:',best_acc)
             
             
 
 # load the testset
-trainset = p1(root='data/p1_data/train_50', transform=transforms.ToTensor())
+trainset = p1(root='data/p1_data/train_50', target= 'train')
 # load the testset
-test_set = p1(root='data/p1_data/val_50', transform=transforms.ToTensor())
+test_set = p1(root='data/p1_data/val_50', target= 'test')
 
 print('# images in trainset:', len(trainset))
 print('# images in testset:', len(test_set))
@@ -159,6 +207,6 @@ images, labels = dataiter.next()
 print('Image tensor in each batch:', images.shape, images.dtype)
 print('Label tensor in each batch:', labels.shape, labels.dtype)
 
-model = vgg16()
-
-train(model, trainset_loader, testset_loader, 100)
+model = resnet(50)
+# print(model)
+train(model, trainset_loader, testset_loader, 50)
