@@ -27,9 +27,16 @@ class p1(Dataset):
         if target == 'train':
             self.transform = transforms.Compose([
                 # transforms.Grayscale(3),
-                transforms.Resize((288,288)),
-                transforms.CenterCrop((224,224)),
+                transforms.Resize((224,224)),
+                # transforms.CenterCrop((224,224)),
                 transforms.RandomHorizontalFlip(),
+                transforms.RandomApply([
+                    transforms.RandomChoice([
+                        transforms.Pad(round(224 * 0.1)),
+                        transforms.RandomCrop((round(224 * 0.9), round(224 * 0.9))),
+                    ]),
+                    transforms.Resize((224, 224))
+                ], p=0.6),
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ])
@@ -104,7 +111,7 @@ def train(model, train_data, test_data, epoch, save_path = './save_model/'):
     best_acc = 0.0
     model_save = model.state_dict()
 
-    accum_iter = 4
+    accum_iter = 8
 
     patient = 5
     trigger = 0
@@ -120,16 +127,16 @@ def train(model, train_data, test_data, epoch, save_path = './save_model/'):
 
         for batch_idx, (data, target) in enumerate(tqdm(train_data)):
             data, target = data.to(device), target.to(device)
-            # optimizer.zero_grad()
+            optimizer.zero_grad()
             output = model(data)
             loss = criterion(output, target)
             loss.backward()
-            # optimizer.step()
+            optimizer.step()
 
-            # weights update
-            if ((batch_idx + 1) % accum_iter == 0) or (batch_idx + 1 == len(train_data)):
-                optimizer.step()
-                optimizer.zero_grad()
+            # # weights update
+            # if ((batch_idx + 1) % accum_iter == 0) or (batch_idx + 1 == len(train_data)):
+            #     optimizer.step()
+            #     optimizer.zero_grad()
 
             # Acc
             acc = (output.argmax(dim=-1) == target).float().mean()
