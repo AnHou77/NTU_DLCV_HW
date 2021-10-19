@@ -1,36 +1,28 @@
-import torch
+from train import p1, resnet, test
+from torch.utils.data import DataLoader
+import sys
 
-import glob
-import os
+if __name__ == '__main__':
+    # load the testset
 
-device = 'cuda:0'
+    data_path = sys.argv[1]
+    save_path = sys.argv[2]
 
-N = 64
-D_in = 1000
-H = 100
-D_out = 10
+    test_set = p1(root=data_path, target= 'test')
 
-x = torch.randn(N,D_in)
-y = torch.randn(N,D_out)
+    print('# images in testset:', len(test_set))
 
-model = torch.nn.Sequential(
-    torch.nn.Linear(D_in,H),
-    torch.nn.ReLU(),
-    torch.nn.Linear(H,D_out)
-)
+    # Use the torch dataloader to iterate through the dataset
+    testset_loader = DataLoader(test_set, batch_size= 50, shuffle=False, num_workers=4)
 
-learning_rate = 1e-4
+    # get some random training images
+    dataiter = iter(testset_loader)
+    images, labels = dataiter.next()
 
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    print('Image tensor in each batch:', images.shape, images.dtype)
+    print('Label tensor in each batch:', labels.shape, labels.dtype)
 
-for t in range(50):
-    y_pred = model(x)
-    
-    loss = torch.nn.functional.mse_loss(y_pred,y)
+    model = resnet(50)
 
-    loss.backward()
-
-    print(loss)
-
-    optimizer.step()
-    optimizer.zero_grad()
+    # print(model)
+    test(model, testset_loader, test_set.fileindices, pretrained_path='./save_model/resnet152_d0.5_b32_0.8770.pth', save_path=save_path)

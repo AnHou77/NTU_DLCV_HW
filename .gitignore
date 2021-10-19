@@ -4,3 +4,4 @@
 *.csv
 data/
 save_model/
+__pycache__/
