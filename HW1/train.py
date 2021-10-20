@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-
 class p1(Dataset):
     def __init__(self, root, target):
 
@@ -190,6 +189,10 @@ def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
                 break
             
 def test(model, test_data, image_ids, pretrained_path, save_path):
+    def get_features(name):
+            def hook(model, input, output):
+                features[name] = output.detach()
+            return hook
     print('-'*20)
     print('| Test set predict |')
     print('-'*20)
@@ -198,6 +201,8 @@ def test(model, test_data, image_ids, pretrained_path, save_path):
     model.load_state_dict(torch.load(pretrained_path))
     model.to(device)
 
+    model.model.fc[3].register_forward_hook(get_features('feats'))
+
     criterion = nn.CrossEntropyLoss()
     model.eval()
 
@@ -205,9 +210,13 @@ def test(model, test_data, image_ids, pretrained_path, save_path):
     test_acc = 0.0
 
     preds = []
+    FEATS = []
+    first = True
 
     for (data, target) in test_data:
         data, target = data.to(device), target.to(device)
+
+        features = {}
 
         with torch.no_grad():
             predict = model(data)
@@ -222,6 +231,16 @@ def test(model, test_data, image_ids, pretrained_path, save_path):
                 
             test_loss += loss
             test_acc += acc             
+
+        # FEATS.append()
+        if first:
+            FEATS = features['feats'].cpu().numpy()
+            print(FEATS.shape)
+        else:
+            FEATS = np.concatenate((FEATS,features['feats'].cpu().numpy()))
+        
+        first = False
+            
         
     test_loss = test_loss / len(test_data)
     test_acc = test_acc / len(test_data)
@@ -233,7 +252,7 @@ def test(model, test_data, image_ids, pretrained_path, save_path):
     output['label'] = preds
     output.to_csv(save_path,index=False)
     print(f'Result save as "{save_path}"')
-
+    return FEATS
 def training():
     # load the trainset
     trainset = p1(root='data/p1_data/train_50', target= 'train')
