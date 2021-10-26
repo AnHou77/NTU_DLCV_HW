@@ -22,7 +22,7 @@ if __name__ == '__main__':
     print('# images in testset:', len(test_set))
 
     # Use the torch dataloader to iterate through the dataset
-    testset_loader = DataLoader(test_set, batch_size= 100, shuffle=False, num_workers=4)
+    testset_loader = DataLoader(test_set, batch_size= 25, shuffle=False, num_workers=4)
 
     # get some random training images
     dataiter = iter(testset_loader)

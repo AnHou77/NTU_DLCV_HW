@@ -53,7 +53,6 @@ class p1(Dataset):
         self.len = len(self.filenames)
                               
     def __getitem__(self, index):
-        """ Get a sample from the dataset """
         image_fn, label = self.filenames[index]
         image = Image.open(image_fn)
             
@@ -63,10 +62,9 @@ class p1(Dataset):
         return image, label
 
     def __len__(self):
-        """ Total number of samples in the dataset """
         return self.len
 
-class resnet(torch.nn.Module):
+class resnet(nn.Module):
     def __init__(self, num_class=50,pretrained_path=None):
         super().__init__()
         
@@ -235,7 +233,6 @@ def test(model, test_data, image_ids, pretrained_path, save_path):
         # FEATS.append()
         if first:
             FEATS = features['feats'].cpu().numpy()
-            print(FEATS.shape)
         else:
             FEATS = np.concatenate((FEATS,features['feats'].cpu().numpy()))
         
@@ -257,21 +254,21 @@ def training():
     # load the trainset
     trainset = p1(root='data/p1_data/train_50', target= 'train')
     # load the validset
-    valid_set = p1(root='data/p1_data/val_50', target= 'test')
+    validset = p1(root='data/p1_data/val_50', target= 'test')
 
     print('# images in trainset:', len(trainset))
-    print('# images in validset:', len(valid_set))
+    print('# images in validset:', len(validset))
 
     # Use the torch dataloader to iterate through the dataset
     trainset_loader = DataLoader(trainset, batch_size=32, shuffle=True, num_workers=4)
-    validset_loader = DataLoader(valid_set, batch_size=64, shuffle=False, num_workers=4)
+    validset_loader = DataLoader(validset, batch_size=64, shuffle=False, num_workers=4)
 
     # get some random training images
     dataiter = iter(trainset_loader)
     images, labels = dataiter.next()
 
-    print('Image tensor in each batch:', images.shape, images.dtype)
-    print('Label tensor in each batch:', labels.shape, labels.dtype)
+    print('(Trainset) Image tensor in each batch:', images.shape, images.dtype)
+    print('(Trainset) Label tensor in each batch:', labels.shape, labels.dtype)
 
     model = resnet(50)
     train(model, trainset_loader, validset_loader, 50)
