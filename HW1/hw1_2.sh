@@ -11,6 +11,6 @@ echo "--------------------------------------------"
 fi
 
 test_data_dir=$1
-output_csv=$2
+output_dir=$2
 
-python3 "inference_p1.py" $test_data_dir $output_csv
+python3 "inference_p2.py" $test_data_dir $output_dir

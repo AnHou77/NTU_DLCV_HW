@@ -14,8 +14,12 @@ import os
 import numpy as np
 import pandas as pd
 from PIL import Image
-from tqdm import tqdm
 from torchsummary import summary
+import skimage.io as imgio
+import warnings
+
+# deal with image output warning
+warnings.filterwarnings('ignore')
 
 import mean_iou_evaluate as miou
 
@@ -33,6 +37,12 @@ class p2(Dataset):
         self.sat_filenames = sorted(sat_filenames)
         self.mask_filenames = sorted(mask_filenames)
 
+        self.img_indices = []
+
+        for fn in self.sat_filenames:
+            fn = fn.replace(root,"")
+            self.img_indices.append(fn.replace("/","")[:-8])
+
         self.masks = miou.read_masks(root)
             
         if len(self.sat_filenames) == len(self.mask_filenames):
@@ -45,7 +55,9 @@ class p2(Dataset):
         image = self.transform(image)
         label = self.masks[index]
 
-        return image, label
+        img_index = self.img_indices[index]
+
+        return image, label, img_index
 
     def __len__(self):
         return self.len
@@ -59,39 +71,100 @@ class VGG16_FCN32s(nn.Module):
         self.fc = nn.Sequential(
             nn.Conv2d(512, 4096, 1),
             nn.ReLU(inplace=True),
-            nn.Dropout(),
+            nn.Dropout2d(),
             nn.Conv2d(4096, 4096, 1),
             nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Conv2d(4096,num_class,1)
+            nn.Dropout2d(),
+            nn.Conv2d(4096,num_class, 1)
         )
-        self.upsample32x = nn.Upsample(scale_factor=32,mode='bilinear',align_corners=False)
-
-        # for param in self.parameters():
-        #     param.requires_grad = True
-        
-        # for param in self.features.parameters():
-        #     param.requires_grad = False
+        self.upsample32 = nn.Upsample(scale_factor=32,mode='bilinear',align_corners=False)
+        # self.upsample32 = nn.ConvTranspose2d(num_class, num_class, 32 , 32)
 
     def forward(self, x):
         fetures = self.features(x)
         fcn = self.fc(fetures)
-        upsample = self.upsample32x(fcn)
+        upsample = self.upsample32(fcn)
         return upsample
 
+class VGG16_FCN8s(nn.Module):
+    def __init__(self, num_class=7):
+        super().__init__()
 
-def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
+        # self.features = torchvision.models.vgg16(pretrained=True).features.children()
+
+        # # self.pool3 = nn.Sequential(*list(self.features)[:17])
+
+        # # self.pool4 = nn.Sequential(*list(self.features)[17:24])
+
+        # # self.pool5 = nn.Sequential(*list(self.features)[24:])
+
+        self.model = torchvision.models.vgg16(pretrained=True)
+        self.pool3 = nn.Sequential(*list(self.model.features.children())[:17])
+        self.pool4 = nn.Sequential(*list(self.model.features.children())[17:24])
+        self.pool5 = nn.Sequential(*list(self.model.features.children())[24:])
+
+        self.fc = nn.Sequential(
+            nn.Conv2d(512, 4096, 1),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(),
+            nn.Conv2d(4096, 4096, 1),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(),
+            nn.Conv2d(4096,num_class, 1)
+        )
+
+        self.pool3_conv = nn.Conv2d(256, num_class, 1)
+        self.pool4_conv = nn.Conv2d(512, num_class, 1)
+
+        self.upsample2x = nn.Upsample(scale_factor=2,mode='bilinear',align_corners=False)
+        self.upsample4x = nn.Upsample(scale_factor=4,mode='bilinear',align_corners=False)
+        self.upsample8x = nn.Upsample(scale_factor=8,mode='bilinear',align_corners=False)
+        # self.upsample32 = nn.ConvTranspose2d(num_class, num_class, 32 , 32)
+
+    def forward(self, x):
+        pool3 = self.pool3(x)
+        pool4 = self.pool4(pool3)
+        pool4_2x = self.upsample2x(pool4)
+        pool5 = self.pool5(pool4)
+        conv7 = self.fc(pool5)
+        conv7_4x = self.upsample4x(conv7)
+
+        pool3 = self.pool3_conv(pool3)
+        pool4_2x = self.pool4_conv(pool4_2x)
+        upsample = self.upsample8x(pool3+pool4_2x+conv7_4x)
+        return upsample
+
+def mask_lable_to_rgb(labels):
+    rgbs = np.empty((len(labels), 512, 512, 3))
+    
+    for i, p in enumerate(labels):
+        rgbs[i, p == 0] = [0,255,255]   # (Cyan: 011) Urban land 
+        rgbs[i, p == 1] = [255,255,0]   # (Yellow: 110) Agriculture land 
+        rgbs[i, p == 2] = [255,0,255]   # (Purple: 101) Rangeland 
+        rgbs[i, p == 3] = [0,255,0]     # (Green: 010) Forest land
+        rgbs[i, p == 4] = [0,0,255]     # (Blue: 001) Water
+        rgbs[i, p == 5] = [255,255,255] # (White: 111) Barren land
+        rgbs[i, p == 6] = [0,0,0]       # (Black: 000) Unknown 
+    
+    rgbs = rgbs.astype(np.uint8)
+    return rgbs
+
+
+
+def train(model, train_data, valid_data, epoch, model_save_path = './save_model/', image_save_path = './save_images/', model_name = 'fcn8'):
      # Hyper parameter
     learning_rate = 1e-2
-    weight_decay = 1e-4
+    weight_decay = 3e-4
     momentum = 0.9
+
+    print(f'Start training {model_name}......')
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print('Device used:', device)
 
     model.to(device)
 
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay= weight_decay)
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=momentum)
     criterion = nn.CrossEntropyLoss()
 
     model.train()
@@ -108,7 +181,7 @@ def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
         train_miou = 0
         first = True
 
-        for batch_idx, (data, target) in enumerate(tqdm(train_data)):
+        for batch_idx, (data, target, _) in enumerate(train_data):
             data, target = data.to(device), target.to(device,dtype=torch.long)
             optimizer.zero_grad()
 
@@ -122,11 +195,10 @@ def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
 
             label_pred = predict.max(dim=1)[1].data.cpu().numpy()
             target = target.cpu().numpy()
-            # score = miou.mean_iou_score(label_pred,target,show_output=False)
 
             # Record Loss & Acc
             train_loss += loss.item()
-            # train_miou += score
+
             if first:
                 all_preds = label_pred
                 all_labels = target
@@ -137,8 +209,7 @@ def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
             first = False
         
         train_loss = train_loss / len(train_data)
-        train_miou = miou.mean_iou_score(all_preds,all_labels,False)
-        # train_miou = train_miou / len(train_data)
+        train_miou = miou.mean_iou_score(all_preds,all_labels)
 
         print(f"[ Train | {ep:03d}/{epoch:03d} ] loss = {train_loss:.5f}, mean_iou = {train_miou:.5f}")
 
@@ -150,9 +221,8 @@ def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
 
         first = True
 
-        for (data, target) in tqdm(valid_data):
+        for batch_idx, (data, target, img_indices) in enumerate(valid_data):
             data, target = data.to(device), target.to(device,dtype=torch.long)
-
             with torch.no_grad():
                 predict = model(data)
                 predict = F.log_softmax(predict, dim=1)
@@ -161,7 +231,7 @@ def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
             
             label_pred = predict.max(dim=1)[1].data.cpu().numpy()
             target = target.cpu().numpy()
-            # score = miou.mean_iou_score(label_pred,target,show_output=False)
+
             if first:
                 all_preds = label_pred
                 all_labels = target
@@ -171,22 +241,74 @@ def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
             
             first = False
             valid_loss += loss
-            # valid_miou += score
+
+            if model_name == 'fcn8':
+                if ep in [1,10,epoch]:
+                    if img_indices[0] in ["0010","0097","0107"]:
+                        output_img = mask_lable_to_rgb(label_pred)
+                        imgio.imsave(os.path.join(image_save_path, img_indices[0] + "_epoch_" + str(ep) + ".png"), output_img[0])
         
         valid_loss = valid_loss / len(valid_data)
-        # valid_miou = valid_miou / len(valid_data)
-        valid_miou = miou.mean_iou_score(all_preds,all_labels,False)
+        valid_miou = miou.mean_iou_score(all_preds,all_labels)
 
         print(f"[ Valid | {ep:03d}/{epoch:03d} ] loss = {valid_loss:.5f}, mean_iou = {valid_miou:.5f}")
         # save the best model
         if valid_miou > best_acc:
             best_acc = valid_miou
             print('best acc: ',best_acc)
-            # model_save = model.state_dict()
-            # save_file = f"resnet152_{best_acc.item():.4f}.pth"
-            # torch.save(model_save, os.path.join(save_path,save_file))
-            # print('save model with acc:',best_acc)
+            model_save = model.state_dict()
+            save_file = model_name + '.pth'
+            torch.save(model_save, os.path.join(model_save_path,save_file))
+            print('save model with mIoU:',best_acc)
 
+def test(model, test_data, pretrained_path, save_path):
+    print('-'*20)
+    print('| Test set predict |')
+    print('-'*20)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print('Device used:', device)
+    model.load_state_dict(torch.load(pretrained_path))
+    model.to(device)
+    print(model)
+    criterion = nn.CrossEntropyLoss()
+    # Validation
+    model.eval()
+
+    valid_loss = 0.0
+    valid_miou = 0.0
+
+    first = True
+
+    for (data, target, img_indices) in test_data:
+        data, target = data.to(device), target.to(device,dtype=torch.long)
+
+        with torch.no_grad():
+            predict = model(data)
+            predict = F.log_softmax(predict, dim=1)
+
+            loss = criterion(predict, target)
+            
+            label_pred = predict.max(dim=1)[1].data.cpu().numpy()
+            target = target.cpu().numpy()
+
+            if first:
+                all_preds = label_pred
+                all_labels = target
+                all_indices = img_indices
+            else:
+                all_preds = np.concatenate((all_preds,label_pred))
+                all_labels = np.concatenate((all_labels,target))
+                all_indices = np.concatenate((all_indices,img_indices))
+            
+            first = False
+            valid_loss += loss
+        
+    valid_loss = valid_loss / len(test_data)
+    valid_miou = miou.mean_iou_score(all_preds,all_labels)
+    print(f"[ Test set | loss = {valid_loss:.5f}, mean_iou = {valid_miou:.5f} ]")
+    output_imgs = mask_lable_to_rgb(all_preds)
+    for i in range(len(output_imgs)):
+        imgio.imsave(os.path.join(save_path, all_indices[i] + ".png"), output_imgs[i])
 
 def training():
     trainset = p2(root='data/p2_data/train')
@@ -201,15 +323,20 @@ def training():
 
     # get some random training images
     dataiter = iter(trainset_loader)
-    images, labels = dataiter.next()
+    images, labels, indices = dataiter.next()
 
     print('(Trainset) Image tensor in each batch:', images.shape, images.dtype)
     print('(Trainset) Label tensor in each batch:', labels.shape, labels.dtype)
 
-    model = VGG16_FCN32s(7).cuda()
+    # model = VGG16_FCN32s(7)
 
-    train(model, trainset_loader, validset_loader, 50)
-    # summary(model,(3,512,512))
+    # train(model, trainset_loader, validset_loader, 30, model_name='fcn32')
+
+    model = VGG16_FCN8s(7)
+    # print(model)
+    train(model, trainset_loader, validset_loader, 30, model_name='fcn8')
+    # summary(VGG16_FCN32s(7).cuda(),(3,512,512))
+    # summary(model.cuda(),(3,512,512))
 
 
 

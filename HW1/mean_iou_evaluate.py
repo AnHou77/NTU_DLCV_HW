@@ -27,7 +27,7 @@ def read_masks(filepath):
 
     return masks
 
-def mean_iou_score(pred, labels, show_output=False):
+def mean_iou_score(pred, labels):
     '''
     Compute mean IoU score over 6 classes
     '''
@@ -36,15 +36,10 @@ def mean_iou_score(pred, labels, show_output=False):
         tp_fp = np.sum(pred == i)
         tp_fn = np.sum(labels == i)
         tp = np.sum((pred == i) * (labels == i))
-        if (tp_fp + tp_fn - tp) == 0:
-            iou = 0
-        else:
-            iou = tp / (tp_fp + tp_fn - tp)
+        iou = tp / (tp_fp + tp_fn - tp)
         mean_iou += iou / 6
-        if show_output:
-            print('class #%d : %1.5f'%(i, iou))
-    if show_output:
-        print('\nmean_iou: %f\n' % mean_iou)
+        print('class #%d : %1.5f'%(i, iou))
+    print('\nmean_iou: %f\n' % mean_iou)
 
     return mean_iou
 
@@ -59,4 +54,4 @@ if __name__ == '__main__':
     pred = read_masks(args.pred)
     labels = read_masks(args.labels)
 
-    mean_iou_score(pred, labels, True)
+    mean_iou_score(pred, labels)
