@@ -2,14 +2,6 @@ from train_p1 import p1, resnet, test
 from torch.utils.data import DataLoader
 import sys
 import numpy as np
-from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-
-def scale_to_01_range(x):
-    value_range = (np.max(x) - np.min(x))
-    starts_from_zero = x - np.min(x)
-    return starts_from_zero / value_range
 
 if __name__ == '__main__':
     # load the testset
@@ -33,4 +25,4 @@ if __name__ == '__main__':
 
     model = resnet(50)
     # print(model)
-    FEATS = np.array(test(model, testset_loader, test_set.fileindices, pretrained_path='./save_model/resnet152_d0.5_b32_0.8770.pth', save_path=save_path))
+    test(model, testset_loader, test_set.fileindices, pretrained_path='./resnet152_0.8740.pth', save_path=save_path)

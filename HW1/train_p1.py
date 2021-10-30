@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
+from numpy.lib.type_check import imag
+
 class p1(Dataset):
     def __init__(self, root, target):
 
@@ -48,7 +50,8 @@ class p1(Dataset):
             filenames = glob.glob(os.path.join(root, f'{i}_*.png'))
             for fn in filenames:
                 self.filenames.append((fn, i))
-                self.fileindices.append(fn.replace(root,""))
+                fn = fn.replace(root,"")
+                self.fileindices.append(fn.replace("/",""))
                 
         self.len = len(self.filenames)
                               
@@ -81,10 +84,6 @@ class resnet(nn.Module):
 
         for param in self.model.parameters():
             param.requires_grad = True
-
-        # for param in self.model.fc.parameters():
-        #     param.requires_grad = True
-
 
     def forward(self, x):
         pred = self.model(x)
@@ -187,13 +186,61 @@ def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
                 break
             
 def test(model, test_data, image_ids, pretrained_path, save_path):
-    def get_features(name):
-            def hook(model, input, output):
-                features[name] = output.detach()
-            return hook
+
     print('-'*20)
     print('| Test set predict |')
     print('-'*20)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print('Device used:', device)
+    model.load_state_dict(torch.load(pretrained_path))
+    model.to(device)
+
+    criterion = nn.CrossEntropyLoss()
+    model.eval()
+
+    test_loss = 0.0
+    test_acc = 0.0
+
+    preds = []
+
+    for (data, target) in test_data:
+        data, target = data.to(device), target.to(device)
+
+        with torch.no_grad():
+            predict = model(data)
+
+            loss = criterion(predict, target)
+
+            # argmax
+            pred = predict.argmax(dim=-1)
+
+            preds += list(pred.cpu().numpy())
+            acc = (pred == target).float().mean()
+                
+            test_loss += loss
+            test_acc += acc             
+        
+    test_loss = test_loss / len(test_data)
+    test_acc = test_acc / len(test_data)
+
+    print(f"Test set | loss = {test_loss:.5f}, acc = {test_acc:.5f}")
+
+    output = {
+        'image_id': image_ids,
+        'label': preds
+    }
+
+    output = pd.DataFrame(output)
+    output.to_csv(save_path,index=False)
+    print(f'Result save as "{save_path}"')
+
+def getFEAT(model, test_data, pretrained_path):
+
+    def get_features(name):
+        def hook(model, input, output):
+            features[name] = output.detach()
+        return hook
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print('Device used:', device)
     model.load_state_dict(torch.load(pretrained_path))
@@ -230,26 +277,20 @@ def test(model, test_data, image_ids, pretrained_path, save_path):
             test_loss += loss
             test_acc += acc             
 
-        # FEATS.append()
         if first:
             FEATS = features['feats'].cpu().numpy()
         else:
             FEATS = np.concatenate((FEATS,features['feats'].cpu().numpy()))
         
-        first = False
-            
+        first = False           
         
     test_loss = test_loss / len(test_data)
     test_acc = test_acc / len(test_data)
 
     print(f"Test set | loss = {test_loss:.5f}, acc = {test_acc:.5f}")
 
-    output = pd.read_csv('data/p1_data/val_gt.csv')
-    output['image_id'] = image_ids
-    output['label'] = preds
-    output.to_csv(save_path,index=False)
-    print(f'Result save as "{save_path}"')
     return FEATS
+
 def training():
     # load the trainset
     trainset = p1(root='data/p1_data/train_50', target= 'train')
@@ -259,11 +300,9 @@ def training():
     print('# images in trainset:', len(trainset))
     print('# images in validset:', len(validset))
 
-    # Use the torch dataloader to iterate through the dataset
     trainset_loader = DataLoader(trainset, batch_size=32, shuffle=True, num_workers=4)
     validset_loader = DataLoader(validset, batch_size=64, shuffle=False, num_workers=4)
 
-    # get some random training images
     dataiter = iter(trainset_loader)
     images, labels = dataiter.next()
 
@@ -273,6 +312,10 @@ def training():
     model = resnet(50)
     train(model, trainset_loader, validset_loader, 50)
 
+
+
 if __name__ == '__main__':
-    # training()
-    pass
+    training()
+
+    # training command:
+    # python3 train_p1.py

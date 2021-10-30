@@ -6,15 +6,12 @@ import torch.nn.functional as F
 import torchvision
 from torchvision import models
 import torchvision.transforms as transforms
-
 from torch.utils.data import Dataset, DataLoader
 
 import glob
 import os
 import numpy as np
-import pandas as pd
 from PIL import Image
-from torchsummary import summary
 import skimage.io as imgio
 import warnings
 
@@ -78,7 +75,6 @@ class VGG16_FCN32s(nn.Module):
             nn.Conv2d(4096,num_class, 1)
         )
         self.upsample32 = nn.Upsample(scale_factor=32,mode='bilinear',align_corners=False)
-        # self.upsample32 = nn.ConvTranspose2d(num_class, num_class, 32 , 32)
 
     def forward(self, x):
         fetures = self.features(x)
@@ -89,14 +85,6 @@ class VGG16_FCN32s(nn.Module):
 class VGG16_FCN8s(nn.Module):
     def __init__(self, num_class=7):
         super().__init__()
-
-        # self.features = torchvision.models.vgg16(pretrained=True).features.children()
-
-        # # self.pool3 = nn.Sequential(*list(self.features)[:17])
-
-        # # self.pool4 = nn.Sequential(*list(self.features)[17:24])
-
-        # # self.pool5 = nn.Sequential(*list(self.features)[24:])
 
         self.model = torchvision.models.vgg16(pretrained=True)
         self.pool3 = nn.Sequential(*list(self.model.features.children())[:17])
@@ -119,7 +107,6 @@ class VGG16_FCN8s(nn.Module):
         self.upsample2x = nn.Upsample(scale_factor=2,mode='bilinear',align_corners=False)
         self.upsample4x = nn.Upsample(scale_factor=4,mode='bilinear',align_corners=False)
         self.upsample8x = nn.Upsample(scale_factor=8,mode='bilinear',align_corners=False)
-        # self.upsample32 = nn.ConvTranspose2d(num_class, num_class, 32 , 32)
 
     def forward(self, x):
         pool3 = self.pool3(x)
@@ -127,10 +114,11 @@ class VGG16_FCN8s(nn.Module):
         pool4_2x = self.upsample2x(pool4)
         pool5 = self.pool5(pool4)
         conv7 = self.fc(pool5)
-        conv7_4x = self.upsample4x(conv7)
 
+        conv7_4x = self.upsample4x(conv7)
         pool3 = self.pool3_conv(pool3)
         pool4_2x = self.pool4_conv(pool4_2x)
+
         upsample = self.upsample8x(pool3+pool4_2x+conv7_4x)
         return upsample
 
@@ -152,7 +140,7 @@ def mask_lable_to_rgb(labels):
 
 
 def train(model, train_data, valid_data, epoch, model_save_path = './save_model/', image_save_path = './save_images/', model_name = 'fcn8'):
-     # Hyper parameter
+    # Hyper parameter
     learning_rate = 1e-2
     weight_decay = 3e-4
     momentum = 0.9
@@ -170,7 +158,6 @@ def train(model, train_data, valid_data, epoch, model_save_path = './save_model/
     model.train()
 
     best_acc = 0.0
-    min_loss = np.inf
 
     for ep in range(1, epoch+1):
         print('Epoch {}/{}'.format(ep, epoch))
@@ -242,6 +229,7 @@ def train(model, train_data, valid_data, epoch, model_save_path = './save_model/
             first = False
             valid_loss += loss
 
+            # output the predicted segmentation mask during early, middle, final stage during the training process
             if model_name == 'fcn8':
                 if ep in [1,10,epoch]:
                     if img_indices[0] in ["0010","0097","0107"]:
@@ -269,7 +257,7 @@ def test(model, test_data, pretrained_path, save_path):
     print('Device used:', device)
     model.load_state_dict(torch.load(pretrained_path))
     model.to(device)
-    print(model)
+    # print(model)
     criterion = nn.CrossEntropyLoss()
     # Validation
     model.eval()
@@ -305,7 +293,7 @@ def test(model, test_data, pretrained_path, save_path):
         
     valid_loss = valid_loss / len(test_data)
     valid_miou = miou.mean_iou_score(all_preds,all_labels)
-    print(f"[ Test set | loss = {valid_loss:.5f}, mean_iou = {valid_miou:.5f} ]")
+    # print(f"[ Test set | loss = {valid_loss:.5f}, mean_iou = {valid_miou:.5f} ]")
     output_imgs = mask_lable_to_rgb(all_preds)
     for i in range(len(output_imgs)):
         imgio.imsave(os.path.join(save_path, all_indices[i] + ".png"), output_imgs[i])
@@ -317,28 +305,25 @@ def training():
     print('# images in trainset:', len(trainset))
     print('# images in validset:', len(validset))
 
-    # Use the torch dataloader to iterate through the dataset
     trainset_loader = DataLoader(trainset, batch_size=20, shuffle=True, num_workers=4)
     validset_loader = DataLoader(validset, batch_size=1, shuffle=False, num_workers=4)
 
-    # get some random training images
     dataiter = iter(trainset_loader)
     images, labels, indices = dataiter.next()
 
     print('(Trainset) Image tensor in each batch:', images.shape, images.dtype)
     print('(Trainset) Label tensor in each batch:', labels.shape, labels.dtype)
 
-    # model = VGG16_FCN32s(7)
-
-    # train(model, trainset_loader, validset_loader, 30, model_name='fcn32')
-
+    ### FCN8s model ###
     model = VGG16_FCN8s(7)
-    # print(model)
     train(model, trainset_loader, validset_loader, 30, model_name='fcn8')
-    # summary(VGG16_FCN32s(7).cuda(),(3,512,512))
-    # summary(model.cuda(),(3,512,512))
 
-
+    ### FCN32s model ###
+    # model = VGG16_FCN32s(7)
+    # train(model, trainset_loader, validset_loader, 30, model_name='fcn32')
 
 if __name__ == '__main__':
     training()
+
+    # training command:
+    # python3 train_p2.py

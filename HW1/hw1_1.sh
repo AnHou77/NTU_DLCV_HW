@@ -1,5 +1,7 @@
 #!/bin/bash
 
+wget -O './resnet152_0.8740.pth' 'https://www.dropbox.com/s/y5fd5nf1u1wta7l/resnet152_0.8740.pth?dl=1'
+
 if [ "$SHELL" = "/bin/bash" ]; then
 echo "--------------------------------"
 echo "| your login shell is the bash |"

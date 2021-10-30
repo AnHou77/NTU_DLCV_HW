@@ -24,8 +24,10 @@ if __name__ == '__main__':
     print('Image tensor in each batch:', images.shape, images.dtype)
     print('Label tensor in each batch:', labels.shape, labels.dtype)
 
+    ### FCN8s inference ###
     model = VGG16_FCN8s(7)
-    test(model, testset_loader, pretrained_path='./save_model/fcn8_0.7011.pth', save_path='./save_data')
+    test(model, testset_loader, pretrained_path='./fcn8_0.7011.pth', save_path='./save_data')
     
+    ### FCN32s inference ###
     # model = VGG16_FCN32s(7)
     # test(model, testset_loader, pretrained_path='./save_model/fcn32_0.6880.pth', save_path='./save_data')
