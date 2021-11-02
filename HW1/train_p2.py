@@ -257,46 +257,34 @@ def test(model, test_data, pretrained_path, save_path):
     print('Device used:', device)
     model.load_state_dict(torch.load(pretrained_path))
     model.to(device)
-    # print(model)
-    criterion = nn.CrossEntropyLoss()
+
     # Validation
     model.eval()
 
-    valid_loss = 0.0
-    valid_miou = 0.0
-
     first = True
 
-    for (data, target, img_indices) in test_data:
-        data, target = data.to(device), target.to(device,dtype=torch.long)
+    for (data, img_indices) in test_data:
+        data = data.to(device)
 
         with torch.no_grad():
             predict = model(data)
             predict = F.log_softmax(predict, dim=1)
-
-            loss = criterion(predict, target)
             
             label_pred = predict.max(dim=1)[1].data.cpu().numpy()
-            target = target.cpu().numpy()
 
             if first:
                 all_preds = label_pred
-                all_labels = target
                 all_indices = img_indices
             else:
                 all_preds = np.concatenate((all_preds,label_pred))
-                all_labels = np.concatenate((all_labels,target))
                 all_indices = np.concatenate((all_indices,img_indices))
             
             first = False
-            valid_loss += loss
-        
-    valid_loss = valid_loss / len(test_data)
-    valid_miou = miou.mean_iou_score(all_preds,all_labels)
-    # print(f"[ Test set | loss = {valid_loss:.5f}, mean_iou = {valid_miou:.5f} ]")
+
     output_imgs = mask_lable_to_rgb(all_preds)
     for i in range(len(output_imgs)):
         imgio.imsave(os.path.join(save_path, all_indices[i] + ".png"), output_imgs[i])
+    print(f'All images save in {save_path}')
 
 def training():
     trainset = p2(root='data/p2_data/train')

@@ -185,7 +185,7 @@ def train(model, train_data, valid_data, epoch, save_path = './save_model/'):
             if trigger >= patient:
                 break
             
-def test(model, test_data, image_ids, pretrained_path, save_path):
+def test(model, test_data, pretrained_path, save_path):
 
     print('-'*20)
     print('| Test set predict |')
@@ -195,38 +195,25 @@ def test(model, test_data, image_ids, pretrained_path, save_path):
     model.load_state_dict(torch.load(pretrained_path))
     model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
     model.eval()
 
-    test_loss = 0.0
-    test_acc = 0.0
-
     preds = []
+    indices = []
 
-    for (data, target) in test_data:
-        data, target = data.to(device), target.to(device)
+    for (data, img_indices) in test_data:
+        data = data.to(device)
 
         with torch.no_grad():
             predict = model(data)
 
-            loss = criterion(predict, target)
-
             # argmax
             pred = predict.argmax(dim=-1)
 
-            preds += list(pred.cpu().numpy())
-            acc = (pred == target).float().mean()
-                
-            test_loss += loss
-            test_acc += acc             
-        
-    test_loss = test_loss / len(test_data)
-    test_acc = test_acc / len(test_data)
-
-    print(f"Test set | loss = {test_loss:.5f}, acc = {test_acc:.5f}")
+            preds += list(pred.cpu().numpy()) 
+            indices += list(img_indices)
 
     output = {
-        'image_id': image_ids,
+        'image_id': indices,
         'label': preds
     }
 
