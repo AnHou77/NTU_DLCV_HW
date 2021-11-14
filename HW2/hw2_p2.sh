@@ -1,4 +1,14 @@
-# TODO: create shell script for running your GAN model
+#!/bin/bash
 
-# Example
-python3 p2.py $1 
+if [ "$SHELL" = "/bin/bash" ]; then
+echo "--------------------------------"
+echo "| your login shell is the bash |"
+echo "--------------------------------"
+else
+echo "--------------------------------------------"
+echo "| your login shell is not bash but $SHELL |"
+echo "--------------------------------------------"
+fi
+
+output_img_dir=$1
+python3 "inference_p2.py" $output_img_dir

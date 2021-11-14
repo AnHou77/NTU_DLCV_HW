@@ -352,8 +352,7 @@ def inference(model_path,save_img_path):
     fake = G1(noise)
 
     for i, img in enumerate(fake):
-        # imgio.imsave(os.path.join('./save_images', f'{i:04d}.jpg'), img)
-        vutils.save_image(img, os.path.join(save_img_path, f'{i:04d}.png'), normalize=True)
+        vutils.save_image(img, os.path.join(save_img_path, f'{i+1:04d}.png'), normalize=True)
 
     # i_s = inception_score(fake.detach().cpu(), cuda=True, resize=True, batch_size=50)[0]
     # print(f'IS: {i_s:.4f}')
