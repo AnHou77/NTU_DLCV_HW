@@ -14,8 +14,6 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from numpy.lib.type_check import imag
-
 class p1(Dataset):
     def __init__(self, root, target):
 
