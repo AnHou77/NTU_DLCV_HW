@@ -6,3 +6,9 @@ data/
 save_model/
 __pycache__/
 test/
+save_images/
+save_digits/
+hw2_data/
+save_data/
+.ipynb_checkpoints/
+save_models/
