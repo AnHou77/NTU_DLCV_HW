@@ -1,4 +1,16 @@
-# TODO: create shell script for running your improved UDA model
+#!/bin/bash
 
-# Example
-python3 bonus.py $1 $2 $3
+if [ "$SHELL" = "/bin/bash" ]; then
+echo "--------------------------------"
+echo "| your login shell is the bash |"
+echo "--------------------------------"
+else
+echo "--------------------------------------------"
+echo "| your login shell is not bash but $SHELL |"
+echo "--------------------------------------------"
+fi
+
+target_data_path = $1
+target_domain_name = $2
+output_path = $3
+python3 "inference_p3.py" $target_data_path $target_domain_name $output_path "improved"

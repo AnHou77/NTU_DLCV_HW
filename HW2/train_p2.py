@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torchsummary.torchsummary import summary
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
@@ -14,10 +13,9 @@ import pandas as pd
 import random
 from PIL import Image
 import torchvision.utils as vutils
-from tqdm import tqdm
 
-from torchsummary import summary
-import digit_classifier as dc
+## open with Classifier.pth & digit_classifer.py
+# import digit_classifier as dc
 
 ## Hyper parameters ##
 image_size = 28
@@ -140,9 +138,7 @@ class Discriminator(nn.Module):
         x = self.net(x)
         x = x.view(-1, D_fs)
         return self.sigmoid(self.fc_real_fake(x)).view(-1), self.softmax(self.fc_classes(x))
-
     
-
 def weights_init(model):
     classname = model.__class__.__name__
     if classname.find('Conv') != -1:
@@ -203,7 +199,7 @@ def train(train_data_path,label_path):
         G_loss_classes_total = 0.0
         D_loss_classes_total = 0.0
 
-        for _, (data, label_classes) in enumerate(tqdm(trainset_loader)):
+        for _, (data, label_classes) in enumerate(trainset_loader):
             data, label_classes = data.to(device), label_classes.to(device)
 
             # Discriminator training with real images
@@ -223,23 +219,22 @@ def train(train_data_path,label_path):
             D_real_loss.backward()
 
             # Discriminator training with fake images
-            label_ = np.random.randint(0, num_classes, b_size)
-            noise_ = np.random.normal(0, 1, (b_size, lv_size))
-            label_onehot = np.zeros((b_size, num_classes))
-            label_onehot[np.arange(b_size), label_] = 1
-            noise_[np.arange(b_size), :num_classes] = label_onehot[np.arange(b_size)]
-            
-            noise_ = (torch.from_numpy(noise_))
-            noise_ = noise_.resize_(b_size, lv_size, 1, 1)
-            noise = torch.randn(b_size, lv_size, 1, 1, device=device)
-            noise.data.copy_(noise_)
+            ### put class label in noise
+            noises = np.random.normal(0, 1, (size, lv_size))
+            label_arr = np.zeros((size, num_classes))
+            label_arr[:, i] = 1
+            noises[:, :num_classes] = label_arr
+            noises = torch.from_numpy(noises)
+            noises = noises.resize_(size, lv_size, 1, 1).float().to(device)
+
             fake_classes_label = torch.randint(0,10,(b_size,), device=device)
-            fake_classes_label.data.resize_(b_size).copy_(torch.from_numpy(label_))
-            fake_imgs = G_model(noise)
+            fake_classes_label.data.resize_(b_size).copy_(torch.from_numpy(labels))
+            
+            fake_imgs = G_model(noises)
             label.fill_(fake_label)
+
             real_fake, classes = D_model(fake_imgs.detach())
             D_loss_real_fake = criterion_real_fake(real_fake,label)
-
             D_loss_classes = criterion_classes(classes, fake_classes_label)
 
             D_loss_real_fake_total += D_loss_real_fake.item()
@@ -271,7 +266,7 @@ def train(train_data_path,label_path):
         G_loss_real_fake_total /= data_size
         G_loss_classes_total /= data_size
         
-        # valid Generator performance\
+        # valid Generator performance
         np.random.seed(manualSeed)
         random.seed(manualSeed)
         torch.manual_seed(manualSeed)
@@ -280,17 +275,15 @@ def train(train_data_path,label_path):
         cnt = 0
         G_model.eval()
         for i in range(10):
-            labels = np.random.randint(i, i+1, size)
+            ### put class label in noise
             noises = np.random.normal(0, 1, (size, lv_size))
-            label_onehot = np.zeros((size, num_classes))
-            label_onehot[np.arange(size), labels] = 1
-            noises[np.arange(size), :num_classes] = label_onehot[np.arange(size)]
-            noise_ = (torch.from_numpy(noises))
-            noise_ = noise_.resize_(size, lv_size, 1, 1)
-            noise = torch.randn(size, lv_size, 1, 1, device=device)
-            noise.data.copy_(noise_)
+            label_arr = np.zeros((size, num_classes))
+            label_arr[:, i] = 1
+            noises[:, :num_classes] = label_arr
+            noises = torch.from_numpy(noises)
+            noises = noises.resize_(size, lv_size, 1, 1).float().to(device)
             
-            output = G_model(noise)
+            output = G_model(noises)
 
             classes = net(output)
             for x, img in enumerate(output):
@@ -334,18 +327,16 @@ def inference(model_path,save_img_path):
 
     size = 100
     for i in range(10):
-        labels = np.random.randint(i, i+1, size)
+        ### put class label in noise ([0-9] each class has [size] noises)
         noises = np.random.normal(0, 1, (size, lv_size))
-        label_onehot = np.zeros((size, num_classes))
-        label_onehot[np.arange(size), labels] = 1
-        noises[np.arange(size), :num_classes] = label_onehot[np.arange(size)]
-        noise_ = (torch.from_numpy(noises))
-        noise_ = noise_.resize_(size, lv_size, 1, 1)
-        noise = torch.randn(size, lv_size, 1, 1, device=device)
-        noise.data.copy_(noise_)
+        label_arr = np.zeros((size, num_classes))
+        label_arr[:, i] = 1
+        noises[:, :num_classes] = label_arr
+        noises = torch.from_numpy(noises)
+        noises = noises.resize_(size, lv_size, 1, 1).float().to(device)
 
         G_model.eval()
-        output = G_model(noise)
+        output = G_model(noises)
 
         for x, img in enumerate(output):
             img_name = f'{i}_{x+1:03d}.png'
@@ -354,4 +345,6 @@ def inference(model_path,save_img_path):
     print(f'All images save in {save_img_path}')
 
 if __name__ == '__main__':
-    train()
+    # Need Classifier.pth & digit_classifer.py for training
+    # train(train_data_path,label_path)
+    pass
