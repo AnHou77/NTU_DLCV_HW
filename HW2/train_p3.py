@@ -12,13 +12,9 @@ import glob
 import os
 
 from torchvision.transforms.autoaugment import AutoAugmentPolicy
-from torchvision.transforms.functional import InterpolationMode
 import numpy as np
 import pandas as pd
-import random
 from PIL import Image
-import torchvision.utils as vutils
-from torchsummary import summary
 
 ## Hyper parameters ##
 image_size = 28
