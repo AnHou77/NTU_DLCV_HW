@@ -9,6 +9,8 @@ test/
 save_images/
 save_digits/
 hw2_data/
+hw3_data/
+models/
+venv/
 save_data/
 .ipynb_checkpoints/
-save_models/
